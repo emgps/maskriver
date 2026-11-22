@@ -40,7 +40,22 @@ const version = "1.0.1"
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 
+// run is the entry point main and the tests share. It owns the one-object stdout
+// contract of `validate --format json`: whenever an invocation parsed and asked
+// for JSON but never wrote a report — a configuration refusal, a plan failure or a
+// validation error — the error object is emitted here instead of teaching every
+// early return about output formats. An invocation whose format request was
+// itself rejected keeps stdout empty, because it never agreed to speak JSON.
 func run(args []string, stdout, stderr io.Writer) int {
+	state := &outputState{}
+	code := execute(args, stdout, stderr, state)
+	if state.json && !state.emitted {
+		emitValidateJSON(stdout, failedValidateJSONReport(state.strict))
+	}
+	return code
+}
+
+func execute(args []string, stdout, stderr io.Writer, state *outputState) int {
 	if len(args) == 0 {
 		usage(stdout)
 		return 0
@@ -98,7 +113,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	var budgetFile, runID string
 	var receiptPage int
 	var operationTimeout time.Duration
-	var strategy, keyID string
+	var strategy, keyID, format string
 	var scopes scopeFlag
 	flags.StringVar(&dialectName, "dialect", "sqlite", "database dialect: sqlite or mysql")
 	flags.StringVar(&source, "source", "", "SQLite source path or MySQL source DSN")
@@ -134,6 +149,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	if command == "validate" {
 		flags.BoolVar(&strict, "strict", true, "refuse any incomplete or warning coverage")
+		flags.StringVar(&format, "format", "text", "output format: text (default) or json")
 	}
 	if reviewCommand {
 		flags.BoolVar(&streaming, "streaming", false, "issue/read an m2 streaming approval instead of a legacy m1 decision")
@@ -163,6 +179,19 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	if flags.NArg() != 0 {
 		return usageError(stderr)
+	}
+	// --format is the only flag that changes the stdout contract, so an unknown
+	// value is refused as a usage error before any work starts. The value is not
+	// echoed: argument errors stay sanitized.
+	if command == "validate" {
+		switch format {
+		case "text":
+		case "json":
+			state.json = true
+			state.strict = strict
+		default:
+			return usageError(stderr)
+		}
 	}
 	// -scope and -table/-column are two spellings of the same declaration;
 	// mixing them would be ambiguous, so it is refused rather than merged.
@@ -312,8 +341,17 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return fail(stderr, 1)
 		}
 		passed := validationPassed(report, strict)
-		fmt.Fprintf(stdout, "validate: pass=%t tables=%d rows=%d issues=%d\n",
+		summary := fmt.Sprintf("validate: pass=%t tables=%d rows=%d issues=%d\n",
 			passed, report.Coverage.Tables, report.Coverage.Rows, len(report.Issues))
+		if state.json {
+			// The human summary is still produced, but it is a diagnostic in JSON
+			// mode: stderr keeps it and stdout carries the single report object.
+			fmt.Fprint(stderr, summary)
+			emitValidateJSON(stdout, validateJSONFromReport(report, strict, passed))
+			state.emitted = true
+		} else {
+			fmt.Fprint(stdout, summary)
+		}
 		if !passed {
 			return 1
 		}
@@ -521,6 +559,7 @@ func usage(w io.Writer) {
 	fmt.Fprintln(w, "mask --apply --approved also requires a stored reviewer decision bound to the plan.")
 	fmt.Fprintln(w, "mask --streaming --apply --resume --run-id <32-hex> resumes m2-recovery-v1.")
 	fmt.Fprintln(w, "status --target <db> --run-id <32-hex> is read-only; it never recovers or writes.")
+	fmt.Fprintln(w, "validate --format json writes one JSON object to stdout; diagnostics stay on stderr.")
 	fmt.Fprintln(w, "approve/revoke sign with a reviewer key; apply reads the deployment trust file only.")
 	fmt.Fprintln(w, "A local operator controlling both trust file and reviewer key is not stopped by RBAC.")
 	fmt.Fprintln(w, "Examples:")

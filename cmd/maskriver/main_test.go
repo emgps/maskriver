@@ -208,7 +208,7 @@ func TestCLIHelpPrintsCompleteStaticFlags(t *testing.T) {
 	}{
 		{"mask long help", []string{"mask", "--help"}, []string{"Usage: maskriver mask [flags]", "-source", "-target", "-scope", "-workers", "-batch-size", "-strategy", "-key-file", "-approved", "-apply", "-trust-file", "-history-dir"}},
 		{"mask short help", []string{"mask", "-h"}, []string{"Usage: maskriver mask [flags]", "-source", "-target", "-scope", "-workers", "-batch-size", "-key-file", "-approved", "-apply", "-trust-file", "-history-dir"}},
-		{"validate help", []string{"validate", "--help"}, []string{"Usage: maskriver validate [flags]", "-source", "-target", "-scope", "-strict"}},
+		{"validate help", []string{"validate", "--help"}, []string{"Usage: maskriver validate [flags]", "-source", "-target", "-scope", "-strict", "-format"}},
 		{"approve help", []string{"approve", "--help"}, []string{"Usage: maskriver approve [flags]", "-scope", "-trust-file", "-history-dir", "-reviewer-key-id", "-reviewer-key-file", "-reviewer-id", "-valid-for"}},
 		{"revoke help", []string{"revoke", "--help"}, []string{"Usage: maskriver revoke [flags]", "-scope", "-trust-file", "-history-dir", "-reviewer-key-file"}},
 	}
